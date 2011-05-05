@@ -42,11 +42,11 @@ tagType tagType = skipSpace >> string tagType >> finishTag
 template = filter validLit <$> temp
   where temp = (:) . Lit <$> literal <*> (cont <|> return [])
         cont = (:) <$> (iff <|> var) <*> temp
-        iff  = string "if" >> If <$> (name <* finishTag) <*> template <*> (negative <|> none) <* tagType "end"
+        iff  = string "if" >> If <$> (space >> name <* finishTag) <*> template <*> (negative <|> none) <* tagType "end"
                where negative = tagType "else" >> template
                      none = pure []
         var  = Var <$> name <* finishTag
-        name = takeWhile1 isAlpha_iso8859_15
+        name = skipSpace >> takeWhile1 isAlpha_iso8859_15
         validLit (Lit "") = False
         validLit _        = True
         
