@@ -1,0 +1,14 @@
+name:               trivial-templates
+version:            0.1.0.0
+description:        A rather trivial string templating library - designed to be as simple as possible, while still being useful.
+synopsis:           trivial string templating
+category:           Text
+license:            BSD3
+license-file:       LICENSE
+author:             Matthew Sorensen
+maintainer:         scholl.ma@gmail.com
+build-type:          Simple
+cabal-version:       >= 1.2
+library
+  exposed-modules:  Text.TrivialTemplates Text.TrivialTemplates.Parser
+  build-depends: bytestring, base > 3, attoparsec, blaze-builder, containers
