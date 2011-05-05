@@ -21,7 +21,7 @@ type Template = [Chunk]
 templateParser::Parser Template
 templateParser = template <* endOfInput
                 
-end = () <$ string "}}"
+finishTag = skipSpace >> string "}}" >> pure ()
 space = satisfy isSpace >> skipSpace
 
 literal = B.concat . reverse <$> literal' []
@@ -35,31 +35,18 @@ literal = B.concat . reverse <$> literal' []
           | state < 0  && char == '{'   = Just (0::Int, term)
           | 0 <= state && char == '{'   = Just (state,True)
           | 0 <= state && char == '\\'  = Just (state + 1,term)
-          | otherwise                   = Just (-1, term)
-var = True
-             
-varOrIf::Parser (Bool,ByteString)
-varOrIf = skipSpace >> (i <|> v) <* skipSpace <* end
-  where i = string "if" >> space >> (not var,) <$> name
-        v = (var,) <$> (name>>= failIfKey)
-        name = takeWhile1 isAlpha_iso8859_15
-        failIfKey s
-          | s == "end" || s == "else" = fail ""
-          | otherwise = return s
+          | otherwise                   = Just (-1, term)          
 tagType::ByteString->Parser ()
-tagType tagType = skipSpace >> string tagType >> skipSpace >> end
+tagType tagType = skipSpace >> string tagType >> finishTag
 
-template::Parser Template
-template = filter validLit <$> temp 
-  where temp = (:).Lit <$> literal <*> (continue <|> return [])
-        continue = (:) <$> (try varOrIf >>= rest) <*> temp
-        rest (tagType,name)
-          | tagType == var  = return $ Var name
-          | otherwise       = cond name
+template = filter validLit <$> temp
+  where temp = (:) . Lit <$> literal <*> (cont <|> return [])
+        cont = (:) <$> (iff <|> var) <*> temp
+        iff  = string "if" >> If <$> (name <* finishTag) <*> template <*> (negative <|> none) <* tagType "end"
+               where negative = tagType "else" >> template
+                     none = pure []
+        var  = Var <$> name <* finishTag
+        name = takeWhile1 isAlpha_iso8859_15
         validLit (Lit "") = False
         validLit _        = True
-cond::ByteString->Parser Chunk
-cond pro = If pro <$> template <*> (neg <|> none) <* tagType "end"
-  where neg = tagType "else" >> template
-        none = return []
-
+        
