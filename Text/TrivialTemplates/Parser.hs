@@ -22,18 +22,19 @@ finishTag = () <$ (skipSpace >> string "}}")
 space = satisfy isSpace >> skipSpace
 
 literal = B.concat . reverse <$> literal' []
-  where literal' acc = scan (-1,False) update >>= post acc
-        post acc bs  = case B.splitAt (B.length bs -2) bs of 
-          (a,"{{")  -> return   $ a:acc
-          (a,"\\{") -> literal' $ "{":a:acc
-          otherwise -> return   $ bs:acc
-        update (state,term) char 
-          | term                        = Nothing --Terminate!
-          | state < 0  && char == '{'   = Just (0::Int, term)
-          | 0 <= state && char == '{'   = Just (state,True)
-          | 0 <= state && char == '\\'  = Just (state + 1,term)
-          | otherwise                   = Just (-1, term)
-                                          
+  where literal' acc = scan (0::Int,0::Int) update >>= post acc
+        update (n,m) char
+          | (m == 0) && char =='{'   = Just (n+1,0)
+          | (2 <= n) && char == '\\' = Just (n,m+1)
+          | (m > 0)  && char /= '\\' = Nothing
+          | (2 <= n) && char /= '{'  = Nothing
+          | otherwise                = Just (0,0)
+        post acc bs = case B.splitAt (B.length bs -2) bs of
+          (a,"{{") -> return $ a:acc
+          (a, "{\\") -> literal' $ "{":a:acc
+          (a, "\\\\") -> literal' $ "\\":a:acc
+          otherwise   -> return $ bs:acc
+
 tagType::B.ByteString->Parser ()
 tagType tagType = skipSpace *> string tagType *> finishTag
 
