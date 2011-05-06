@@ -3,17 +3,14 @@ module Text.TrivialTemplates.Parser(
   Chunk (..),
   Template,
   templateParser) where
-
 import Data.Attoparsec hiding (satisfy, scan, takeWhile1)
 import Data.Attoparsec.Char8  hiding (space)
 import qualified Data.ByteString.Char8 as B
 import Control.Applicative hiding (many)
 
-type ByteString = B.ByteString
-
-data Chunk = Var ByteString |
-             Lit ByteString |
-             If ByteString [Chunk] [Chunk]
+data Chunk = Var B.ByteString |
+             Lit B.ByteString |
+             If B.ByteString [Chunk] [Chunk]
            deriving(Show)
                    
 type Template = [Chunk]                   
@@ -21,7 +18,7 @@ type Template = [Chunk]
 templateParser::Parser Template
 templateParser = template <* endOfInput
                 
-end = () <$ string "}}"
+finishTag = () <$ (skipSpace >> string "}}")
 space = satisfy isSpace >> skipSpace
 
 literal = B.concat . reverse <$> literal' []
@@ -36,30 +33,21 @@ literal = B.concat . reverse <$> literal' []
           | 0 <= state && char == '{'   = Just (state,True)
           | 0 <= state && char == '\\'  = Just (state + 1,term)
           | otherwise                   = Just (-1, term)
-var = True
-             
-varOrIf::Parser (Bool,ByteString)
-varOrIf = skipSpace >> (i <|> v) <* skipSpace <* end
-  where i = string "if" >> space >> (not var,) <$> name
-        v = (var,) <$> (name>>= failIfKey)
-        name = takeWhile1 isAlpha_iso8859_15
-        failIfKey s
-          | s == "end" || s == "else" = fail ""
-          | otherwise = return s
-tagType::ByteString->Parser ()
-tagType tagType = skipSpace >> string tagType >> skipSpace >> end
+                                          
+tagType::B.ByteString->Parser ()
+tagType tagType = skipSpace *> string tagType *> finishTag
 
 template::Parser Template
 template = filter validLit <$> temp 
-  where temp = (:).Lit <$> literal <*> (continue <|> return [])
-        continue = (:) <$> (try varOrIf >>= rest) <*> temp
-        rest (tagType,name)
-          | tagType == var  = return $ Var name
-          | otherwise       = cond name
+  where temp = (:).Lit <$> literal <*> (continue <|> nothing)
+        continue = skipSpace >> (:) <$> (iff <|> var) <*> temp
+        var = Var <$> name <* finishTag
+        iff = If  <$> tag  <*> template <*> (negative <|> nothing) <* tagType "end"
+          where tag = string "if" *> space *> name <* finishTag
+                negative = tagType "else" *> template
+        name = takeWhile1 isAlpha_iso8859_15 >>= notKey
+          where notKey x | (x=="end")||(x=="else") = empty
+                         | otherwise               = pure x
         validLit (Lit "") = False
         validLit _        = True
-cond::ByteString->Parser Chunk
-cond pro = If pro <$> template <*> (neg <|> none) <* tagType "end"
-  where neg = tagType "else" >> template
-        none = return []
-
+        nothing = pure []
