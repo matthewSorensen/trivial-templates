@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings, TupleSections #-}
+{-# LANGUAGE OverloadedStrings #-}
 module Text.TrivialTemplates.Parser(
   Chunk (..),
   Template,
