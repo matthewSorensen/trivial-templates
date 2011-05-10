@@ -1,9 +1,7 @@
 module Text.TrivialTemplates(
   Enviroment,
   Template,  
-  safeParseTemplate,
   readTemplate,
-  safeReadTemplate,
   parseTemplate,
   writeAsBuilder,
   writeAsByteString
@@ -18,31 +16,23 @@ import Text.TrivialTemplates.Parser
 
 type Enviroment = Map ByteString ByteString
 
-parseTemplate::ByteString->Template
-parseTemplate = unsafeEnd . parse
+parseTemplate::ByteString->Either String Template
+parseTemplate = Atto.eitherResult . parse
 
-safeParseTemplate::ByteString->Either String Template
-safeParseTemplate = Atto.eitherResult . parse
-
-readTemplate::FilePath->IO Template              
+readTemplate::FilePath->IO (Either String Template)
 readTemplate = fmap parseTemplate . readFile
-
-safeReadTemplate::FilePath->IO (Either String Template)
-safeReadTemplate = fmap safeParseTemplate . readFile
 
 parse::ByteString->Atto.Result Template
 parse = flip Atto.feed empty . Atto.parse templateParser
 
-unsafeEnd::Atto.Result a->a
-unsafeEnd = either error id . Atto.eitherResult
-
 writeAsBuilder::Template->Enviroment->Builder
 writeAsBuilder tmp env = mconcat $ map (write' env) tmp
   where write' _ (Lit a) = fromByteString a
-        write' e (If a true false) =maybe f  t $ lookup a e
+        write' e (If pro true false) =maybe f  t $ lookup pro e
           where f = writeAsBuilder false e
                 t _ = writeAsBuilder true e
-        write' e (Var n) = fromByteString $ e!n
-
+        write' e (Var name) = maybe err fromByteString $ lookup name e
+          where err = error $ "Key " ++ show name ++ " not present in enviroment"
+          
 writeAsByteString::Template->Enviroment->ByteString
 writeAsByteString = (toByteString .) . writeAsBuilder
