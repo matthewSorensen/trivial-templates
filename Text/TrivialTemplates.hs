@@ -16,22 +16,50 @@ A short demonstration of substitution, literals, and conditional inclusion:
 
 -}
 module Text.TrivialTemplates(
-  Enviroment,
+  Env,
   Template,  
+  Stacked (..),
   readTemplate,
   parseTemplate,
-  writeAsBuilder,
-  writeAsByteString
+  writeAlt,
+  writeApp,  
+  writeFunc
   ) where
 import Prelude hiding (readFile,lookup)
 import qualified Data.Attoparsec as Atto
 import Blaze.ByteString.Builder
-import Data.ByteString (readFile,empty,ByteString)
-import Data.Monoid (mconcat)
+import Data.ByteString (readFile,ByteString)
+import qualified Data.ByteString as B
+import Data.Monoid (mconcat,mappend,mempty)
 import Data.Map (Map,lookup,(!)) 
+import Data.Maybe
 import Text.TrivialTemplates.Parser
+import Control.Applicative 
 
-type Enviroment = Map ByteString ByteString
+type Env a = (ByteString->a ByteString)
+
+writeAlt::Alternative a=>Env a->Template->a Builder
+writeAlt env = foldl (\acc chunk-> mappend <$> acc <*> get env chunk) $ pure mempty
+  where get _ (Lit a)             = pure $ fromByteString a
+        get e (If pro true false) = (e pro *> writeAlt e true) <|> writeAlt e false
+        get e (Var name)          = fromByteString <$> e name
+
+writeApp::Applicative a=>Env a->Template->a Builder
+writeApp env = fmap fromJust . runStack . writeAlt (Stacked . fmap pure . env)
+
+writeFunc::(ByteString->ByteString)->Template->Builder
+writeFunc e = fromJust . writeAlt (pure . e)
+
+
+newtype Stacked m n a = Stacked {runStack::m (n a)}
+instance (Functor m, Functor n) => Functor (Stacked m n) where
+  fmap f (Stacked x) = Stacked $ (f <$>) <$> x
+instance (Applicative m, Applicative n) => Applicative (Stacked m n) where
+  pure = Stacked . pure . pure
+  (Stacked a) <*> (Stacked b) = Stacked $ (<*>) <$> a <*> b
+instance (Applicative m, Alternative n) => Alternative (Stacked m n) where
+  empty = Stacked (pure empty)
+  (Stacked a) <|> (Stacked b) = Stacked $ (<|>) <$> a <*>  b
 
 -- | Parses a template from a 'Data.ByteString', using the template syntax previously outlined. 
 --  If the template fails to parse, a 'Data.Either.Left' value containing an error message.
@@ -43,19 +71,4 @@ readTemplate::FilePath->IO (Either String Template)
 readTemplate = fmap parseTemplate . readFile
 
 parse::ByteString->Atto.Result Template
-parse = flip Atto.feed empty . Atto.parse templateParser
-
--- | Renders a template to a 'Blaze.ByteString.Builder.Builder'. If any variables referenced 
---   in the template aren't present in the 'Environment' an error will be thrown.
-writeAsBuilder::Template->Enviroment->Builder
-writeAsBuilder tmp env = mconcat $ map (write' env) tmp
-  where write' _ (Lit a) = fromByteString a
-        write' e (If pro true false) =maybe f  t $ lookup pro e
-          where f = writeAsBuilder false e
-                t _ = writeAsBuilder true e
-        write' e (Var name) = maybe err fromByteString $ lookup name e
-          where err = error $ "Key " ++ show name ++ " not present in environment"
-          
--- | Identical to 'writeAsBuilder', except it renders a template to a 'Data.ByteString'
-writeAsByteString::Template->Enviroment->ByteString
-writeAsByteString = (toByteString .) . writeAsBuilder
+parse = flip Atto.feed B.empty . Atto.parse templateParser
