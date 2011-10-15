@@ -1,18 +1,7 @@
 {-| A simple (even /trivial/) template system, offering simple substitution 
     and conditional inclusion.
 
-A short demonstration of substitution, literals, and conditional inclusion:
-
->import Data.ByteString.Char8 (pack)
->import Text.TrivialTemplates
->import Data.Map (fromList)
-> 
->env = fromList . map (\(key,val)->(pack key, pack val)) 
->template = toTemplate "hello, {{object}} {{\\ {{if this}}that{{else}}not that{{end}}"
->  where toTemplate = either error id . parseTemplate . pack
->main = do
->  print $ writeAsByteString template $ env [("object","world"),("this","")]
->  print $ writeAsByteString template $ env [("object","world")]
+A short demonstration of substitution, literals, and conditional inclusion <was removed, as it was outdated>.
 
 -}
 module Text.TrivialTemplates(
